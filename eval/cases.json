@@ -1,0 +1,21 @@
+[
+  {
+    "question": "What do I roll for a risky action?",
+    "expectedConfidence": "high",
+    "expectedAnswerSnippet": "1d20"
+  },
+  {
+    "question": "How much mana does a spell cost?",
+    "expectedConfidence": "high",
+    "expectedAnswerSnippet": "1 Mana"
+  },
+  {
+    "question": "How many hit points does a goblin have?",
+    "expectedConfidence": "not_in_book"
+  },
+  {
+    "question": "If I gain a condition I already have, does it stack?",
+    "expectedConfidence": "high",
+    "expectedAnswerSnippet": "no additional effect"
+  }
+]

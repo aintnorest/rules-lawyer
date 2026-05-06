@@ -1,0 +1,10 @@
+{
+  "dataDir": "./data",
+  "libraries": [
+    {
+      "id": "dnd-srd-5-2-1",
+      "label": "D&D SRD 5.2.1",
+      "path": "/absolute/path/to/SRD_CC_v5.2.1.pdf"
+    }
+  ]
+}
