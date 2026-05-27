@@ -2,7 +2,9 @@
 
 Local **RAG assistant** for tabletop RPG rules: you point it at a folder or PDF of rulebooks on your machine, it builds a search index, and you ask natural-language questions with **answers tied to real citations** from the text.
 
-This repository is a **portfolio / proof-of-concept** you can clone and run at home. It is **local-first only** (no hosted demo here, no accounts). A separate project can wrap the same ideas for the web.
+This repository is a **portfolio / proof-of-concept** you can clone and run at home. It is **local-first only** (no hosted demo here, no accounts). Production work continues at greenskinlabs.com (Rules Q&A API and UI).
+
+> **Status (2026-05-27):** Development is **paused** on this repo. See [`STATUS.md`](STATUS.md) for context and what carries forward to Greenskin Labs.
 
 ---
 
@@ -12,7 +14,7 @@ This is a small but **production-shaped** retrieval + generation pipeline, not a
 
 **Grounded answers.** The model must reply in structured JSON: prose fields plus **only chunk identifiers** it used. The server then **hydrates** citation snippets, page hints, and labels from the index. The model never invents quoted rule text in the citation layer—no snippet hallucinations in the UI.
 
-**Retrieval that behaves with real books.** Search combines **embedding similarity** over chunks with a **full-corpus lexical lane** (so “does it stack?” can still surface a paragraph whose wording doesn’t match the embedding of the question). Results are merged, reranked, optionally expanded with neighboring chunks, and can use optional **graph and glossary-style** signals built at ingest time.
+**Retrieval that behaves with real books.** Search combines **embedding similarity** over chunks with a **full-corpus lexical lane** (so “does it stack?” can still surface a paragraph whose wording doesn’t match the embedding of the question). Results are merged, reranked, and expanded with neighboring chunks for the top hits. Ingest also builds **zettels, concept tags, MOC summaries, and a link graph**; optional **graph routing, MOC document boosts, and definesConcept retrieval** are implemented but **off by default** (`retrieveGraphExpandWeight`, `retrieveDocRouterWeight`, and `retrieveDefineConceptWeight` are `0` in `src/config.ts` — tune them in `rules-lawyer.config.json` to experiment).
 
 **Honest uncertainty.** The model can label confidence as grounded, mixed, absent from the indexed text, or speculative; thin retrieval is expected to produce “not in these rules” behavior rather than confident fiction.
 
@@ -20,11 +22,9 @@ This is a small but **production-shaped** retrieval + generation pipeline, not a
 
 **Ingest pipeline.** PDFs are parsed with **unpdf** (text layer), split into chunks with metadata (document, page span, optional headings), embedded in batches, then optionally grouped into **section “zettels”** with extra embeddings, **LLM-assisted concept tags**, **per-document scope summaries (MOC)**, and a simple link graph—stored as plain files under `data/<libraryId>/` (see below).
 
-**Operator UX.** The web UI streams **Server-Sent Events** so you see embedding → retrieval → generation phases. **Web Speech** (where the browser allows) provides push-to-talk and short spoken summaries.
+**Operator UX.** The web UI streams **Server-Sent Events** so you see embedding → retrieval → generation phases. **Web Speech** (where the browser allows) provides **push-to-talk input** into the question field. The model also returns a `spokenSummary` field in the API response, but the UI does **not** read it aloud yet.
 
-**Quality checks.** `pnpm eval` runs a tiny **regression harness** against a committed synthetic PDF fixture so changes to retrieval or prompting don’t silently break abstain / citation behavior.
-
-Design notes and experiments live in [`docs/research/`](docs/research/).
+**Quality checks.** `pnpm eval` runs a small **generation regression harness** against a committed markdown fixture (`eval/fixtures/mini-rules.md`). It exercises structured output and abstention via `generateAnswer` with in-memory chunks — **not** the full ingest → retrieve → answer path. Run it with Ollama up and the same models as ingest.
 
 **Corpus licensing.** This repo does **not** ship third-party rulebooks. The walkthrough below uses the **Dungeons & Dragons SRD** (Creative Commons **CC BY 4.0**). You download the official PDF yourself, index it locally, and keep attribution in line with the license. SRD is rules reference material—not the full commercial books.
 
@@ -133,6 +133,8 @@ pnpm ingest --library dnd-srd-5-2-1 --path "/full/path/to/SRD_CC_v5.2.1.pdf"
 - Replace the path with yours. Use quotes if the path has spaces.  
 - This can take **many minutes** on the first run (thousands of chunks embedded). Progress prints in the terminal.  
 - Indexed data is written under **`data/dnd-srd-5-2-1/`**. That directory is **not** committed to git (it’s large and machine-specific).
+- **`--rebuild`** — discard the existing manifest and re-ingest from scratch.
+- **`--no-index`** — skip automatic index-hint extraction from PDF tail pages (use manual `index-hints.json` if needed).
 
 If you defined several libraries in `rules-lawyer.config.json`, you can instead run:
 
@@ -166,7 +168,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser. Choose the 
 pnpm eval
 ```
 
-Uses a tiny committed PDF in the repo—not for gameplay, just to verify the pipeline.
+Uses the synthetic markdown fixture in `eval/fixtures/mini-rules.md` — not for gameplay, just to sanity-check generation and abstention with Ollama running.
 
 ---
 
@@ -177,7 +179,7 @@ Uses a tiny committed PDF in the repo—not for gameplay, just to verify the pip
 | Errors about **Ollama** or connection refused | Start Ollama from the app menu; confirm `ollama list` works in a terminal. |
 | **Embedding model mismatch** | The index was built with a different embed model than the app expects. Re-run ingest, or set `EMBED_MODEL` to match what is recorded in `data/<libraryId>/manifest.json`. |
 | Empty **library** list in the UI | Run ingest successfully so `data/<id>/manifest.json` exists. |
-| Garbled **tables** in answers | Text is taken from the PDF text layer in reading order; complex tables may still be messy. See [`docs/research/table-extraction.md`](docs/research/table-extraction.md). |
+| Garbled **tables** in answers | Text is taken from the PDF text layer in reading order via **unpdf**; complex multi-column tables may still be messy. OCR/table-aware parsing is out of scope for this POC (Greenskin Labs uses Document AI instead). |
 
 ---
 
@@ -185,26 +187,18 @@ Uses a tiny committed PDF in the repo—not for gameplay, just to verify the pip
 
 | Path | Role |
 |------|------|
-| `app/` | Next.js UI and `/api/libraries`, `/api/query` (SSE). |
-| `src/ingest/` | PDF parsing, chunking, store, zettel + graph + MOC. |
-| `src/query/` | Retrieval, prompt, generation, citations. |
-| `src/providers/` | Ollama-backed embed + structured generate. |
+| `app/` | Next.js 16 UI and `/api/libraries`, `/api/query` (SSE). |
+| `src/config.ts` | Zod-validated config (`rules-lawyer.config.json` + env overrides). |
+| `src/types.ts` | Shared types (`QueryResult`, `Chunk`, `Zettel`, etc.). |
+| `src/ingest/` | PDF parsing (**unpdf**), chunking, JSON vector store, zettel + graph + MOC pipeline. |
+| `src/query/` | Hybrid retrieval, prompt, generation, citation hydration and alignment. |
+| `src/providers/` | Ollama-backed embed + structured JSON generate. |
+| `src/lib/` | Chunk text, concepts, similarity, token helpers. |
 | `scripts/ingest.ts` | CLI: build or update `data/<libraryId>/`. |
-| `scripts/eval.ts` | CLI: regression table from `eval/cases.json`. |
-| `eval/fixtures/` | Tiny PDF for tests. |
-| `data/` | Your indexes (created by ingest, **gitignored**). |
+| `scripts/eval.ts` | CLI: generation checks from `eval/cases.json`. |
+| `eval/fixtures/mini-rules.md` | Synthetic rules text for eval (not a PDF). |
+| `data/<libraryId>/` | Your indexes (**gitignored**). Typical files: `manifest.json`, `chunks.jsonl`, `vectors.bin`, `zettels.jsonl`, `zettel_vectors.bin`, `edges.jsonl`, `moc.jsonl`, `moc_vectors.bin`, optional `index-hints.json`. |
 
----
+### Config knobs (optional)
 
-## License for this code
-
-The **application source** in this repository is licensed under the [MIT License](LICENSE). Add your name to the copyright line there if you want it on the record.
-
-**SRD content** is not part of this repo. If you index the SRD, follow **CC BY 4.0** (attribution, link to license, indicate if changes were made). Official text and license: Wizards of the Coast’s published SRD materials.
-
----
-
-## Further reading
-
-- [Implementation plan (historical)](IMPLEMENTATION.plan.md) — how the MVP was scoped and built.  
-- [Research notes](docs/research/) — retrieval, chunking, vision parsing ideas, hosting notes, etc.
+Copy `rules-lawyer.config.example.json` and extend with any fields from `src/config.ts` — for example `retrieveHybridLexicalTopK`, `retrieveLexicalWeight`, or non-zero graph/MOC/defineConcept weights for experiments.
