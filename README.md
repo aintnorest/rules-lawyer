@@ -2,7 +2,7 @@
 
 Local **RAG assistant** for tabletop RPG rules: you point it at a folder or PDF of rulebooks on your machine, it builds a search index, and you ask natural-language questions with **answers tied to real citations** from the text.
 
-This repository is a **portfolio / proof-of-concept** you can clone and run at home. It is **local-first only** (no hosted demo here, no accounts). Production work continues at greenskinlabs.com (Rules Q&A API and UI).
+This repository was a **proof-of-concept** you can clone and run at home. It is **local-first only** (no hosted demo here, no accounts). This was intended to test out several ideas at zero cost. After using this project to work through some ideas I started a more realistic project that can be found at greenskinlabs.com (Rules Q&A API and UI). That work has been going well and you can read about it here https://greenskinlabs.com/blog.
 
 > **Status (2026-05-27):** Development is **paused** on this repo. See [`STATUS.md`](STATUS.md) for context and what carries forward to Greenskin Labs.
 
